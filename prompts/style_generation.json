@@ -1,0 +1,26 @@
+{
+    "generate_style": {
+        "style_prompt": "[ATTRIBUTES]: Writing Style Attribute: {}",
+        "instruction": "[TASK]: Please generate {} paragraphs. All paragraphs must have the provided writing style. Each paragraph should vary in topic and other style aspects."
+    },
+    "generate_style_topic": {
+        "style_prompt": "[ATTRIBUTES]: Writing Style Attribute: {}, Topic Attribute: {}",
+        "instruction": "[TASK]: Please generate {} paragraphs. All paragraphs must have the provided writing style and topic.\nOnly return the generated paragraph."
+    },
+    "rewrite_document": {
+        "style_prompt": "[ATTRIBUTES]: Writing Style Attribute: {}\n[TEXT]: {}\n\n",
+        "instruction_more": "[TASK]: Please rewrite the provided text to have the provided writing style.\nOnly return the generated paragraph.",
+        "instruction_less": "[TASK]: Please rewrite the provided text by eliminating the provided writing style.\nOnly return the generated paragraph.",
+        "instruction_rephrase": "[TASK]: Please rephrase the provided text while preserving its semantics."
+    },
+    "query_topics": {
+        "instruction": "[TASK]: Answer with a single phrase. What is the main topic of this text?"
+    },
+    "describe_documents_writing_styles": {
+        "instruction": "Please provide a list of writing style attributes that all of the given text has for each of the morphological, syntactic, semantic, and discourse levels. Each level should start with a paragraph heading then a list of short sentences describing the style where each sentence is in the format of \"The author is X.\" or \"The author uses X.\""
+    },
+    "summarize_sentences": {
+        "to_paragraph": "Please rewrite the following list of writing style bullet points into a single paragraph.",
+        "to_sentence": "You are provided with a list of paragraphs which are describing the writing styles of a set of documents. Please rewrite and summarize the list of paragraphs into 2-3 sentences."
+    }
+}
