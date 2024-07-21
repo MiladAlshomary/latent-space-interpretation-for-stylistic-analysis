@@ -1,5 +1,6 @@
 import os
 import re
+import ast
 import random
 from collections import Counter
 
@@ -13,8 +14,6 @@ from tqdm import tqdm
 from tabulate import tabulate
 from nltk.corpus import wordnet as wn
 from plotly.subplots import make_subplots
-from sklearn.cluster import DBSCAN
-from sklearn.metrics import silhouette_score
 from spacy.matcher import Matcher
 
 
@@ -25,28 +24,41 @@ nlp = None
 ####################
 # HELPER FUNCTIONS #
 ####################
+class InvalidModelNameError(Exception):
+    """
+    Exception raised for errors in the model name format.
+
+    Attributes:
+        message (str): Explanation of the error. Defaults to "Model name does not follow the format '[FAMILY]:[MODEL NAME].'"
+    """
+
+    def __init__(
+        self, message="Model name does not follow the format '[FAMILY]:[MODEL NAME].'"
+    ):
+        """
+        Initialize the InvalidModelNameError with an optional error message.
+
+        Parameters:
+            message (str): Explanation of the error.
+        """
+        self.message = message
+        super().__init__(self.message)
+
+def safe_parse(doc_id):
+    if isinstance(doc_id, list):
+        return doc_id
+    try:
+        return ast.literal_eval(doc_id)
+    except (ValueError, SyntaxError):
+        return doc_id.strip("[]").replace("'", "").split(", ")
+
+
 def gen_from_iterable_dataset(iterable_ds):
     yield from iterable_ds
 
 
 def column(matrix, i):
     return [row[i] for row in matrix]
-
-
-def normalized(vector):
-    if np.sum(vector) == 0:
-        return np.array(vector)
-
-    return vector / np.sum(vector)
-
-
-def l2_ball(dim):
-    point = np.random.randn(dim)
-    point /= np.linalg.norm(point)
-    point = np.abs(point)
-    point /= np.linalg.norm(point)
-
-    return point
 
 
 def partition(obj, num_partitions):
@@ -86,27 +98,6 @@ def replace_first_word(input_string, new_word):
     new_string = os.path.join(os.path.dirname(input_string), new_last_part)
 
     return new_string
-
-
-class InvalidModelNameError(Exception):
-    """
-    Exception raised for errors in the model name format.
-
-    Attributes:
-        message (str): Explanation of the error. Defaults to "Model name does not follow the format '[FAMILY]:[MODEL NAME].'"
-    """
-
-    def __init__(
-        self, message="Model name does not follow the format '[FAMILY]:[MODEL NAME].'"
-    ):
-        """
-        Initialize the InvalidModelNameError with an optional error message.
-
-        Parameters:
-            message (str): Explanation of the error.
-        """
-        self.message = message
-        super().__init__(self.message)
 
 
 def check_model_name_format(s):
@@ -176,27 +167,53 @@ def extract_feats(desc):
     return output
 
 
-def flatten_deepest_layer(nested_list):
-    def get_max_depth(lst):
-        if not isinstance(lst, list):
-            return 0
-        return 1 + max((get_max_depth(item) for item in lst), default=0)
+def find_first_minimal_change(data, threshold):
+    """
+    Find the first key where the change in all three values compared to the previous key is minimal.
 
-    def flatten_once(lst, current_depth, max_depth):
-        if current_depth == max_depth:
-            return lst
-        result = []
-        for item in lst:
-            if isinstance(item, list):
-                result.append(flatten_once(item, current_depth + 1, max_depth))
-            else:
-                result.append(item)
-        if current_depth == max_depth - 1:
-            return [elem for sublist in result for elem in sublist]
-        return result
+    Parameters:
+    data (dict): A dictionary where keys are integers and values are tuples of three floats.
+    threshold (float): Maximum allowed change for each of the three values.
 
-    max_depth = get_max_depth(nested_list)
-    return flatten_once(nested_list, 1, max_depth)
+    Returns:
+    int: The first key where the change in all three values is minimal (less than the threshold).
+         Returns None if no such key is found.
+
+    Example:
+    --------
+    >>> data = {
+    ...     1: (0.512, 0.001, 0.145),
+    ...     3: (0.299, 0.01, 0.172),
+    ...     8: (0.246, 0.021, 0.196),
+    ...     21: (0.126, 0.126, 0.33),
+    ...     ...
+    ... }
+    >>> find_first_minimal_change(data)
+    21
+
+    Notes:
+    ------
+    - The dictionary should have integer keys and tuple values with exactly three float elements.
+    - The function assumes that the dictionary keys are sortable (e.g., integers).
+    - The function will only compare values if there is a previous value to compare with.
+    - If no key meets the minimal change condition, the function returns None.
+    """
+    previous_values = None
+
+    for key in sorted(data.keys(), reverse=True):
+        current_values = data[key]
+
+        if previous_values is not None:
+            changes = [
+                abs(current - previous)
+                for current, previous in zip(current_values, previous_values)
+            ]
+            if all(change < threshold for change in changes):
+                return key
+
+        previous_values = current_values
+
+    return None
 
 
 ############
@@ -624,79 +641,6 @@ def find_next_largest_or_equal(nums, target):
                 next_largest = num
 
     return next_largest
-
-
-def find_best_dbscan_params(x, eps_range, metric):
-    scores = []
-    eps_to_cluster = {}
-
-    for eps in eps_range:
-        clustering = DBSCAN(eps=eps, metric=metric, min_samples=2).fit(x)
-
-        if all([l == -1 for l in clustering.labels_]):
-            scores.append((eps, 0, -1))
-        else:
-            # keep only the authors that were clustered
-            clustered_authors = [x for x in zip(x, clustering.labels_) if x[1] != -1]
-            a_embeds = [a[0] for a in clustered_authors]
-            a_labels = [a[1] for a in clustered_authors]
-
-            if len(np.unique(a_labels)) == 1:  # one cluster
-                scores.append((eps, 0, -1))
-            else:
-                scores.append(
-                    (
-                        eps,
-                        len(np.unique(clustering.labels_)),
-                        silhouette_score(a_embeds, a_labels),
-                    )
-                )
-
-        eps_to_cluster[eps] = clustering.labels_
-
-    best_eps = 0
-    best_eps_val = -1
-    for i in scores:
-        if i[2] > best_eps_val:
-            best_eps = i[0]
-            best_eps_val = i[2]
-
-    return scores, best_eps, eps_to_cluster
-
-
-def get_style_weight(
-    documentIDs, weight_type, document_to_style_feats, style_feats_df, style_idf=None
-):
-    style_feats = []
-    for documentID in documentIDs:
-        style_feats += (
-            document_to_style_feats[documentID]
-            if documentID in document_to_style_feats
-            else []
-        )
-
-    tf = [style_feats.count(key) / val for key, val in style_feats_df.items()]
-
-    if weight_type == "tf":
-        return tf
-
-    elif weight_type == "tfidf":
-        assert style_idf is not None
-
-        tfidf = []
-        for index in range(len(tf)):
-            tfidf.append(tf[index] * style_idf[index])
-
-        return tfidf
-
-
-def get_cluster_top_feats(style_feats_distribution, style_feats, top_k=5):
-    sorted_feats = np.argsort(style_feats_distribution)[::-1]
-
-    top_feats = [
-        style_feats[x] for x in sorted_feats[:top_k] if style_feats_distribution[x] > 0
-    ]
-    return top_feats
 
 
 def merge_sublists(sublists, pairs):

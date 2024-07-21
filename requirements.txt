@@ -1,14 +1,14 @@
 pandas
-mutual - implication - score
+mutual-implication-score
 spacy
-python - levenshtein
+python-levenshtein
 numpy
 plotly
 tqdm
 nltk
-scikit - learn
+scikit-learn
 datasets
-huggingface - hub
+huggingface-hub
 datadreamer
 torch
 transformers

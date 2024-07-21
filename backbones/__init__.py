@@ -7,7 +7,7 @@ from transformers import QuantoConfig
 from transformers import BitsAndBytesConfig
 from datadreamer.llms import HFTransformers, ParallelLLM, OpenAI
 
-from utils import *
+from utils import check_model_name_format
 
 
 def get_datadreamer_backbone(model_name, device):

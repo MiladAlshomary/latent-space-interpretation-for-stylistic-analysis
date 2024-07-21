@@ -1,18 +1,29 @@
 import os
 import re
+import sys
 import json
 import itertools
 import pickle as pkl
 from collections import defaultdict
 
+import numpy as np
+from tqdm import tqdm
 from datasets import Dataset
 from functools import partial
 from huggingface_hub import login
+from sklearn.cluster import DBSCAN
 from datadreamer import DataDreamer
 from datadreamer.steps import ProcessWithPrompt, DataSource, zipped, concat
 
-from utils import *
-from backbones import *
+from utils import (
+    gen_from_iterable_dataset,
+    extract_feats,
+    word_difference,
+    column,
+    merge_sublists,
+    is_sentence_finished
+)
+from backbones import get_datadreamer_backbone
 
 
 ############################
@@ -664,7 +675,7 @@ def refine_features(
     num_iterations = 0
 
     while True:
-        # TODO: Ideally, we would want to compute the affinity scores between all combinations of styles
+        # Ideally, we would want to compute the affinity scores between all combinations of styles
         # Here, we approximate this by taking a style from the group as the representative
         refined_styles_single_combinations = list(
             itertools.combinations([i[0] for i in refined_styles], 2)
@@ -717,3 +728,31 @@ def refine_features(
         sys.stdout.flush()
 
     return refined_styles
+
+
+def process_style_features(
+    style_generator, df, datadreamer_path, column_name, output_clm, output_path
+):
+    # Shorten features
+    attributes_set = df[column_name].unique()
+
+    res = style_generator.shorten_sentences(attributes_set, datadreamer_path)
+
+    # Make sure that all shortend features are valid sentences
+    valid_shortend_sentences = {
+        x: is_sentence_finished(x) for x in tqdm(set(res.generations.tolist()))
+    }
+
+    res["valid_sentence"] = res.generations.apply(lambda x: valid_shortend_sentences[x])
+    feature_to_shortend = {
+        row["inputs"]: row["generations"]
+        for _, row in res[res.valid_sentence].iterrows()
+    }
+
+    df[output_clm] = df[column_name].apply(
+        lambda c: feature_to_shortend[c] if c in feature_to_shortend else c
+    )
+
+    df.to_csv(output_path, index=False)
+
+    return df

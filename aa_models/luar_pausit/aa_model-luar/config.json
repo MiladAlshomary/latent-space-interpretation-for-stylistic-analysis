@@ -1,0 +1,17 @@
+{
+  "_name_or_path": "rrivera1849/LUAR-MUD",
+  "architectures": [
+    "LUAR"
+  ],
+  "auto_map": {
+    "AutoConfig": "config.LUARConfig",
+    "AutoModel": "model.LUAR"
+  },
+  "embedding_size": 512,
+  "k_bucket_size": 1024,
+  "model_type": "LUAR",
+  "q_bucket_size": 512,
+  "torch_dtype": "float32",
+  "transformers_version": "4.38.1",
+  "use_memory_efficient_attention": false
+}
