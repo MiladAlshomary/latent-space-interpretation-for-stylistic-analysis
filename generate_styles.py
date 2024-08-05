@@ -1,5 +1,6 @@
 import os
 import argparse
+import spacy
 
 import pandas as pd
 from mutual_implication_score import MIS
@@ -74,7 +75,12 @@ def main(args):
                 for i in row["generations"].split("\n\n")
                 if "**" not in i and "*" in i
             ]
-            descriptions = descriptions[0].split("\n")
+            
+            if len(descriptions) > 0:
+                descriptions = descriptions[0].split("\n")
+            else:
+                print(descriptions)
+                continue;
 
             for description in descriptions:
                 styles_df = pd.concat(
