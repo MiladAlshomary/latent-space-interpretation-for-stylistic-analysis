@@ -70,7 +70,7 @@ class StyleGenerator:
         )
 
         # Load keys
-        self.keys = json.load(open(os.path.join(current_dir, "..", "keys.json"), "r"))
+        self.keys = json.load(open(os.path.join(current_dir, "..", "keys-local.json"), "r"))
 
         # Authenticate HuggingFace to access gated models
         login(self.keys["huggingface"])

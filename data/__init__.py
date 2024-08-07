@@ -28,7 +28,7 @@ def get_aa_data(data_path, group_by_author=False):
     - Each record must contain 'authorIDs', 'fullText', and 'documentID'.
     - 'authorIDs' should be a list of IDs.
     """
-    data_df = pd.read_json(data_path, lines=True)
+    data_df = pd.read_json(data_path)
     data_df["authorID"] = data_df["authorIDs"].str[0]
     if group_by_author:
         data_df = (

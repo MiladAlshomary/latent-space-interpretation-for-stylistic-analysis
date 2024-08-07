@@ -22,38 +22,42 @@ def compute_eer(label, pred):
     return eer
 
 
-def compute_model_performance(embed_model, df, proj_matrices):
+def compute_model_performance(embed_model, df, proj_matrix):
     """ """
     # Embed documents with AA model
     documents_embeddings = embed_model.encode(df.fullText.tolist())
 
+    # print(documents_embeddings)
+    # print(documents_embeddings.shape)
+    print(proj_matrix.shape)
     # Project document embeddings onto interpretable bases
-    interp_embeddings = []
-    for proj_matrix in proj_matrices:
-        interp_embeddings.append([proj_matrix.dot(e) for e in documents_embeddings])
-
+    interp_embeddings = [proj_matrix.dot(e) for e in documents_embeddings]
+    
     # Compute performance metrics
-    interp_documents_pairwise_sims = np.mean(
-        np.array([cosine_similarity(x, x) for x in interp_embeddings]), axis=0
-    )
+    interp_documents_pairwise_sims = cosine_similarity(interp_embeddings, interp_embeddings)
+    
     index_to_author_id = {i: x for i, x in enumerate(df.authorID.tolist())}
-
+    # print(interp_documents_pairwise_sims)
+    # print(interp_documents_pairwise_sims.shape)
+    # print('=========')
+    
     prec_interp = []
     eer_interp = []
     ndcg_interp = []
 
+    row_num = 0
     for index, row in df.iterrows():
         author_id = row["authorID"]
 
         y_true = [
             1 if author_id == a_id else 0
             for i, a_id in index_to_author_id.items()
-            if i != index
+            if i != row_num
         ]
         y_interp_score = [
-            interp_documents_pairwise_sims[index][i]
+            interp_documents_pairwise_sims[row_num][i]
             for i, a_id in index_to_author_id.items()
-            if i != index
+            if i != row_num
         ]
 
         prec_interp.append(average_precision_score(y_true, y_interp_score))
@@ -64,6 +68,8 @@ def compute_model_performance(embed_model, df, proj_matrices):
 
         ndcg_interp.append(ndcg_score([y_true], [y_interp_score]))
 
+        row_num+=1
+        
     return (
         round(np.mean(eer_interp), 3),
         round(np.mean(prec_interp), 3),

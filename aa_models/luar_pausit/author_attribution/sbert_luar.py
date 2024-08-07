@@ -7,7 +7,7 @@ import os
 from transformers import AutoModel, AutoTokenizer
 from sentence_transformers import SentenceTransformer, models, evaluation
 from sentence_transformers import SentenceTransformer
-from sentence_transformers.util import (
+from sentence_transformers.util import(
     import_from_string,
     batch_to_device,
     fullname,
@@ -24,7 +24,6 @@ import transformers
 # sentence transformer version
 __version__ = "2.5.0"
 
-
 class LuarTransformer(models.Transformer):
     def __init__(
         self,
@@ -36,15 +35,7 @@ class LuarTransformer(models.Transformer):
         do_lower_case: bool = False,
         tokenizer_name_or_path: str = None,
     ):
-        super().__init__(
-            model_name_or_path,
-            512,
-            model_args,
-            cache_dir,
-            tokenizer_args,
-            do_lower_case,
-            tokenizer_name_or_path,
-        )
+        super().__init__(model_name_or_path, 512, model_args, cache_dir, tokenizer_args, do_lower_case, tokenizer_name_or_path)
 
         self.batch_size = 16
         self.author_level = True
@@ -57,6 +48,7 @@ class LuarTransformer(models.Transformer):
             self.get_config_dict(), self.auto_model.__class__.__name__
         )
 
+    
     def _load_model(self, model_name_or_path, config, cache_dir, **model_args):
         """Loads the transformer model"""
         self.auto_model = AutoModel.from_pretrained(
@@ -72,31 +64,24 @@ class LuarTransformer(models.Transformer):
         batch_size = self.batch_size
         identifier = "documentID"
 
-        input_ids = features["input_ids"]
-        attention_mask = features["attention_mask"]
+        input_ids = features['input_ids']
+        attention_mask = features['attention_mask']
 
         input_ids = input_ids.unsqueeze(1).unsqueeze(1)
         attention_mask = attention_mask.unsqueeze(1).unsqueeze(1)
         input_ids = input_ids.reshape((-1, 1, self.token_max_length))
         attention_mask = attention_mask.reshape((-1, 1, self.token_max_length))
-        output_states = self.auto_model(
-            input_ids, attention_mask, document_batch_size=self.document_batch_size
-        )
+        output_states = self.auto_model(input_ids, attention_mask, document_batch_size=self.document_batch_size)
 
+        
         output_tokens = output_states
 
-        features.update(
-            {
-                "sentence_embedding": output_tokens,
-                "attention_mask": features["attention_mask"],
-            }
-        )
+
+        features.update({"sentence_embedding": output_tokens, "attention_mask": features['attention_mask']})
 
         if self.auto_model.config.output_hidden_states:
             all_layer_idx = 2
-            if (
-                len(output_states) < 3
-            ):  # Some models only output last_hidden_states and all_hidden_states
+            if len(output_states) < 3:  # Some models only output last_hidden_states and all_hidden_states
                 all_layer_idx = 1
 
             hidden_states = output_states[all_layer_idx]
@@ -152,7 +137,7 @@ class LuarTransformer(models.Transformer):
 
     def save(self, output_path: str):
         self.auto_model.save_pretrained(output_path)
-        # self.tokenizer.save_pretrained(output_path) # we don't save the tokenizer because its throwing an error. We load it from the original path
+        #self.tokenizer.save_pretrained(output_path) # we don't save the tokenizer because its throwing an error. We load it from the original path 
 
         with open(os.path.join(output_path, "sentence_bert_config.json"), "w") as fOut:
             json.dump(self.get_config_dict(), fOut, indent=2)
@@ -179,12 +164,8 @@ class LuarTransformer(models.Transformer):
         if "model_args" in config:
             config["model_args"].pop("trust_remote_code")
 
-        config["model_args"] = {"trust_remote_code": True}
-        return LuarTransformer(
-            model_name_or_path=input_path,
-            tokenizer_name_or_path="rrivera1849/LUAR-MUD",
-            **config
-        )
+        config["model_args"]={'trust_remote_code':True}
+        return LuarTransformer(model_name_or_path=input_path, tokenizer_name_or_path="rrivera1849/LUAR-MUD", **config)
 
 
 class LuarSentenceTransformer(SentenceTransformer):
@@ -228,9 +209,7 @@ class LuarSentenceTransformer(SentenceTransformer):
         # Save modules
         for idx, name in enumerate(self._modules):
             module = self._modules[name]
-            if idx == 0 and isinstance(
-                module, LuarTransformer
-            ):  # Save transformer model in the main folder
+            if idx == 0 and isinstance(module, LuarTransformer):  # Save transformer model in the main folder
                 model_path = path + "/"
             else:
                 model_path = os.path.join(path, str(idx) + "_" + type(module).__name__)
@@ -238,16 +217,7 @@ class LuarSentenceTransformer(SentenceTransformer):
             os.makedirs(model_path, exist_ok=True)
             module.save(model_path)
             modules_config.append(
-                {
-                    "idx": idx,
-                    "name": name,
-                    "path": os.path.basename(model_path),
-                    "type": (
-                        "author_attribution.sbert_luar.LuarTransformer"
-                        if type(module).__module__ == "author_attribution.sbert_luar"
-                        else type(module).__module__
-                    ),
-                }
+                {"idx": idx, "name": name, "path": os.path.basename(model_path), "type": "author_attribution.sbert_luar.LuarTransformer" if type(module).__module__=="author_attribution.sbert_luar" else type(module).__module__}
             )
 
         with open(os.path.join(path, "modules.json"), "w") as fOut:

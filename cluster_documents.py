@@ -3,6 +3,7 @@ import argparse
 import warnings
 import pickle as pkl
 from collections import Counter, defaultdict
+import spacy
 
 import numpy as np
 import pandas as pd
@@ -47,7 +48,7 @@ def main(args):
     # Load model and data
     model = get_model(args["model"])
     train_df = get_aa_data(args["train_dir"], group_by_author=True)
-    test_df = get_aa_data(args["test_dir"])
+    test_df  = get_aa_data(args["test_dir"])
 
     # Get embeddings for documents
     author_to_embeddings = {
@@ -64,7 +65,7 @@ def main(args):
     eps_to_labels = {}
 
     for eps in tqdm(
-        np.arange(0.01, 2, 0.01),
+        np.arange(0.01, 1, 0.1),#np.arange(0.01, 2, 0.01),
         ascii=True,
         desc="Testing Different Epsilon Values",
         leave=False,
@@ -81,13 +82,18 @@ def main(args):
         new_bases = np.array(
             [sum_vectors[label] / count for label, count in count_vectors.items()]
         )
-
-        eps_to_performance[eps] = compute_model_performance(model, test_df, [new_bases])
+        print(eps)
+        eps_to_performance[eps] = compute_model_performance(model, test_df, new_bases)
         eps_to_labels[eps] = cluster_labels
 
+        print(eps_to_performance[eps])
+        
     best_eps = find_first_minimal_change(eps_to_performance, args["eps_threshold"])
+    print(best_eps)
+    print(eps_to_labels[best_eps])
+    print('========')
     train_df["cluster_label"] = eps_to_labels[best_eps]
-
+    
     if not os.path.exists(args["save_dir"]):
         os.makedirs(args["save_dir"])
 

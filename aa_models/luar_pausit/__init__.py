@@ -1,6 +1,7 @@
 import os
 import sys
 
+from luar_pausit.author_attribution.sbert_luar import LuarTransformer, LuarSentenceTransformer
 from sentence_transformers import SentenceTransformer
 
 
