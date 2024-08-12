@@ -1,9 +1,11 @@
 import os
 import argparse
 import warnings
+import json
 import pickle as pkl
 from collections import Counter, defaultdict
 import spacy
+import math
 
 import numpy as np
 import pandas as pd
@@ -65,7 +67,7 @@ def main(args):
     eps_to_labels = {}
 
     for eps in tqdm(
-        np.arange(0.01, 1, 0.1),#np.arange(0.01, 2, 0.01),
+        np.arange(0.01, 0.1, 0.01),
         ascii=True,
         desc="Testing Different Epsilon Values",
         leave=False,
@@ -84,14 +86,13 @@ def main(args):
         )
         print(eps)
         eps_to_performance[eps] = compute_model_performance(model, test_df, new_bases)
+        eps_to_performance[eps] = [eps_to_performance[eps], len(new_bases)]
         eps_to_labels[eps] = cluster_labels
 
         print(eps_to_performance[eps])
-        
-    best_eps = find_first_minimal_change(eps_to_performance, args["eps_threshold"])
-    print(best_eps)
-    print(eps_to_labels[best_eps])
-    print('========')
+
+    #json.dump(eps_to_performance, open('./eps_performances.json', 'w'))
+    best_eps = sorted(eps_to_performance.items(), key=lambda x: x[1][0])[0][0]#find_first_minimal_change(eps_to_performance, args["eps_threshold"])
     train_df["cluster_label"] = eps_to_labels[best_eps]
     
     if not os.path.exists(args["save_dir"]):
@@ -138,6 +139,13 @@ def main(args):
     cluster_to_authors = defaultdict(list)
     cluster_to_styles = defaultdict(list)
 
+    #create a dictionary mapping features to their idf
+    number_documents    = styles_df.documentID.nunique()
+    style_feats_agg_df  = styles_df.groupby('final_attribute_name').agg({'documentID': lambda x: len(x)}).reset_index()
+    style_feats_agg_df['document_freq'] = style_feats_agg_df.documentID
+    style_feats_list = style_feats_agg_df.final_attribute_name.tolist()
+    style_to_feats_dfreq = {x[0]: math.log(number_documents/x[1]) for x in zip(style_feats_agg_df.final_attribute_name.tolist(), style_feats_agg_df.document_freq.tolist())}
+
     for _, row in final_df.iterrows():
         cluster_label = row["cluster_label"]
         author_id = row["authorID"]
@@ -156,9 +164,10 @@ def main(args):
         style_counts = Counter(cluster_to_styles[cluster_label])
         total_styles = sum(style_counts.values())
         style_distribution = {
-            style: count / total_styles for style, count in style_counts.items()
-        }
-        vector_to_style_distribution[tuple(avg_vector)] = style_distribution
+            style: count * style_to_feats_dfreq[style] if style in style_to_feats_dfreq else 0 for style, count in style_counts.items()
+        } #TF-IDF
+        
+        vector_to_style_distribution[cluster_label] = [tuple(avg_vector), style_distribution]
 
     # Save final interpretable space
     pkl.dump(

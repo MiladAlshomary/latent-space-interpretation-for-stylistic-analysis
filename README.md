@@ -17,6 +17,15 @@ python cluster_documents.py --train-dir datasets/example_data.jsonl
 ```
 `cluster_documents.py` must be run after `generate_styles.py` to construct the interpretable space, where each basis is mapped to a style distribution.
 
+Example usage for generating style explanations:
+```
+python generate_explanations.py --inter-space <path to the interpretable space generated from cluster_documents.py code> 
+                                --input-path <path to the dataframe containing the documents to be explained> 
+                                --output-path <path to where to save the output>
+
+```
+`cluster_documents.py` must be run after `generate_styles.py` to construct the interpretable space, where each basis is mapped to a style distribution.
+
 ## Requirements
 Install the necessary libraries using the provided `requirements.txt`:
 ```
@@ -55,3 +64,6 @@ munch
 - The default clustering method used is DBSCAN with cosine dissimilarity as the metric.
 - Points of Interest (POIs) are identified by iterating through a range of $\epsilon$ values for DBSCAN and selecting the value where the performance gain is minimal across all metrics (EER, AP, NDCG). The default range is 0.01 to 2 with a step size of 0.01.
 - Using a train and test dataset that is too small may result in degenerate clustering outcomes due to the nature of DBSCAN.
+
+### Generating style explanations for documents
+- Generate explanations for the style of documents
