@@ -67,7 +67,7 @@ def main(args):
     eps_to_labels = {}
 
     for eps in tqdm(
-        np.arange(0.01, 0.1, 0.01),
+        np.arange(0.01, 1, 0.01),
         ascii=True,
         desc="Testing Different Epsilon Values",
         leave=False,
@@ -84,7 +84,7 @@ def main(args):
         new_bases = np.array(
             [sum_vectors[label] / count for label, count in count_vectors.items()]
         )
-        print(eps)
+
         eps_to_performance[eps] = compute_model_performance(model, test_df, new_bases)
         eps_to_performance[eps] = [eps_to_performance[eps], len(new_bases)]
         eps_to_labels[eps] = cluster_labels

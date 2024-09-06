@@ -29,7 +29,6 @@ def compute_model_performance(embed_model, df, proj_matrix):
 
     # print(documents_embeddings)
     # print(documents_embeddings.shape)
-    print(proj_matrix.shape)
     # Project document embeddings onto interpretable bases
     interp_embeddings = [proj_matrix.dot(e) for e in documents_embeddings]
     

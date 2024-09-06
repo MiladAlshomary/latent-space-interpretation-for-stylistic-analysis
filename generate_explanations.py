@@ -56,6 +56,7 @@ def main(args):
     #'../data/explainability/clusterd_authors_with_style_description.pkl'
     interpretable_space = pkl.load(open(args['inter_path'], 'rb'))
     del interpretable_space[-1] #DBSCAN generate a cluster -1 of all outliers. We don't want this cluster
+    print("# clusters:", len(interpretable_space))
     dimension_to_latent = {key: interpretable_space[key][0] for key in interpretable_space}
     dimension_to_style  = {key: interpretable_space[key][1] for key in interpretable_space}
 

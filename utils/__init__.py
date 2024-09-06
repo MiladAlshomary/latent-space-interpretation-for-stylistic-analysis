@@ -7,13 +7,12 @@ from collections import Counter
 import spacy
 import Levenshtein
 import numpy as np
-import plotly.colors as pc
-import plotly.graph_objects as go
-
+#import plotly.colors as pc
+#import plotly.graph_objects as go
+#from plotly.subplots import make_subplots
 from tqdm import tqdm
 from tabulate import tabulate
 from nltk.corpus import wordnet as wn
-from plotly.subplots import make_subplots
 from spacy.matcher import Matcher
 
 
