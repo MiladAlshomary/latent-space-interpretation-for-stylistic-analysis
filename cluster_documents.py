@@ -45,7 +45,7 @@ def main(args):
 
     Example usage:
     --------------
-    python script.py --train-dir path/to/train --test-dir path/to/test --save-dir path/to/save --model aa_model-luar --eps-threshold 0.02
+    python script.py --train-dir path/to/train --test-dir path/to/test --save-dir path/to/save --model aa_model-luar --eps
     """
     # Load model and data
     model = get_model(args["model"])
@@ -62,20 +62,51 @@ def main(args):
     # Compute dissimilarity matrix
     distance_matrix = squareform(pdist(author_mean_embeddings, metric="cosine"))
 
-    # Loop through a range of epsilons and compute their performance
-    eps_to_performance = {}
-    eps_to_labels = {}
+    def find_best_eps():
+        # Loop through a range of epsilons and compute their performance
+        eps_to_performance = {}
+        eps_to_labels = {}
+        
+        for eps in tqdm(
+            np.arange(0.01, 1, 0.01),
+            ascii=True,
+            desc="Testing Different Epsilon Values",
+            leave=False,
+        ):
+            cluster_labels = DBSCAN(
+                eps=eps, metric="precomputed", min_samples=2, n_jobs=-1
+            ).fit_predict(distance_matrix)
+    
+            sum_vectors = defaultdict(lambda: np.zeros(len(author_mean_embeddings[0])))
+            count_vectors = Counter(cluster_labels)
+            for label, vector in zip(cluster_labels, author_mean_embeddings):
+                sum_vectors[label] += vector
+    
+            new_bases = np.array(
+                [sum_vectors[label] / count for label, count in count_vectors.items()]
+            )
+    
+            eps_to_performance[eps] = compute_model_performance(model, test_df, new_bases)
+            eps_to_performance[eps] = [eps_to_performance[eps], len(new_bases)]
+            eps_to_labels[eps] = cluster_labels
+    
+            print(eps_to_performance[eps], eps)
 
-    for eps in tqdm(
-        np.arange(0.01, 1, 0.01),
-        ascii=True,
-        desc="Testing Different Epsilon Values",
-        leave=False,
-    ):
+        #json.dump(eps_to_performance, open('./eps_performances.json', 'w'))
+        best_eps = sorted(eps_to_performance.items(), key=lambda x: x[1][0])[0][0]#find_first_minimal_change(eps_to_performance, args["eps_threshold"])
+        train_df["cluster_label"] = eps_to_labels[best_eps]
+
+        return best_eps, train_df
+
+    if args['eps'] == -1:
+        best_eps, train_df = find_best_eps()
+    else:
+        best_eps = args['eps']
+
         cluster_labels = DBSCAN(
-            eps=eps, metric="precomputed", min_samples=2, n_jobs=-1
-        ).fit_predict(distance_matrix)
-
+                eps=best_eps, metric="precomputed", min_samples=2, n_jobs=-1
+            ).fit_predict(distance_matrix)
+    
         sum_vectors = defaultdict(lambda: np.zeros(len(author_mean_embeddings[0])))
         count_vectors = Counter(cluster_labels)
         for label, vector in zip(cluster_labels, author_mean_embeddings):
@@ -85,16 +116,9 @@ def main(args):
             [sum_vectors[label] / count for label, count in count_vectors.items()]
         )
 
-        eps_to_performance[eps] = compute_model_performance(model, test_df, new_bases)
-        eps_to_performance[eps] = [eps_to_performance[eps], len(new_bases)]
-        eps_to_labels[eps] = cluster_labels
-
-        print(eps_to_performance[eps])
-
-    #json.dump(eps_to_performance, open('./eps_performances.json', 'w'))
-    best_eps = sorted(eps_to_performance.items(), key=lambda x: x[1][0])[0][0]#find_first_minimal_change(eps_to_performance, args["eps_threshold"])
-    train_df["cluster_label"] = eps_to_labels[best_eps]
-    
+        train_df["cluster_label"] = cluster_labels
+        
+        
     if not os.path.exists(args["save_dir"]):
         os.makedirs(args["save_dir"])
 
@@ -183,7 +207,7 @@ if __name__ == "__main__":
     parser.add_argument("--save-dir", type=str, required=True)
     parser.add_argument("--style-dir", type=str, required=True)
     parser.add_argument("--model", type=str, default="aa_model-luar")
-    parser.add_argument("--eps-threshold", type=float, default=0.02)
+    parser.add_argument("--eps", type=float, default=-1)
     args = vars(parser.parse_args())
 
     if not os.path.exists(args["style_dir"]):
