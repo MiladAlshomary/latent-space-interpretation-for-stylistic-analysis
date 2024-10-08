@@ -53,6 +53,7 @@ def main(args):
         model_name=args["generator_model"],
         device=args["device"],
         max_new_tokens=args["max_new_tokens"],
+        datadreamer_path=args['datadreamer_path']
     )
 
     print("Generating styles... ", end="")
@@ -231,6 +232,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", type=str)
     parser.add_argument("--device", type=int, nargs="+")
     parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument("--datadreamer_path", type=str, default='./datadreamer')
     parser.add_argument(
         "--generator-model",
         type=str,

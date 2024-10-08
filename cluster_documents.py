@@ -17,6 +17,7 @@ from data import get_aa_data
 from utils import find_first_minimal_change, safe_parse
 from metrics import compute_model_performance
 from aa_models import get_model
+from styles import StyleGenerator
 
 warnings.filterwarnings("ignore")
 
@@ -193,6 +194,20 @@ def main(args):
         
         vector_to_style_distribution[cluster_label] = [tuple(avg_vector), style_distribution]
 
+    if args['summarize_cluster_reps']:
+        print('Summarizing styles of interpretable dimensions')
+        style_generator = StyleGenerator(model_name="openai:gpt-3.5-turbo", device=0, max_new_tokens=100)
+        for key, value in vector_to_style_distribution.items():
+            style_feats_dict = value[1]
+            style_feats = sorted(style_feats_dict.items(), key=lambda x: -x[1])
+            print(style_feats[:args['top_k_feats']])
+            top_k_feats = [x[0] for x in style_feats[:args['top_k_feats']] if str(x[0]) != 'nan']
+            rep_summary_df = style_generator.summarize_sentences([top_k_feats], 'to_concise_paragraph')
+            rep_summary = rep_summary_df.generations.tolist()
+            print(top_k_feats)
+            print(rep_summary)
+            vector_to_style_distribution[key] = (value[0], value[1], rep_summary[0])
+            
     # Save final interpretable space
     pkl.dump(
         vector_to_style_distribution,
@@ -207,7 +222,10 @@ if __name__ == "__main__":
     parser.add_argument("--save-dir", type=str, required=True)
     parser.add_argument("--style-dir", type=str, required=True)
     parser.add_argument("--model", type=str, default="aa_model-luar")
+    
     parser.add_argument("--eps", type=float, default=-1)
+    parser.add_argument("--summarize_cluster_reps", action='store_true', default=False)
+    parser.add_argument("--top_k_feats", type=int, default=-1)
     args = vars(parser.parse_args())
 
     if not os.path.exists(args["style_dir"]):

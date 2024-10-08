@@ -737,7 +737,6 @@ def process_style_features(
     attributes_set = df[column_name].unique()
 
     res = style_generator.shorten_sentences(attributes_set, datadreamer_path)
-
     # Make sure that all shortend features are valid sentences
     valid_shortend_sentences = {
         x: is_sentence_finished(x) for x in tqdm(set(res.generations.tolist()))
@@ -745,14 +744,13 @@ def process_style_features(
 
     res["valid_sentence"] = res.generations.apply(lambda x: valid_shortend_sentences[x])
     feature_to_shortend = {
-        row["inputs"]: row["generations"]
+        row["inputs"].replace("[SENTENCE]: ", ""): row["generations"]
         for _, row in res[res.valid_sentence].iterrows()
     }
 
     df[output_clm] = df[column_name].apply(
         lambda c: feature_to_shortend[c] if c in feature_to_shortend else c
     )
-
     df.to_csv(output_path, index=False)
 
     return df

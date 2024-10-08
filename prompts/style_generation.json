@@ -21,6 +21,7 @@
     },
     "summarize_sentences": {
         "to_paragraph": "Please rewrite the following list of writing style bullet points into a single paragraph.",
+        "to_concise_paragraph": "Please rewrite the following list of writing style bullet points into a 1 to 3 sentences in the form of 'The author is X'",
         "to_sentence": "You are provided with a list of paragraphs which are describing the writing styles of a set of documents. Please rewrite and summarize the list of paragraphs into 2-3 sentences."
     }
 }
