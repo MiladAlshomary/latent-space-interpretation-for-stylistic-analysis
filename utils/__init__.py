@@ -14,6 +14,8 @@ from tqdm import tqdm
 from tabulate import tabulate
 from nltk.corpus import wordnet as wn
 from spacy.matcher import Matcher
+import math
+from collections import Counter, defaultdict
 
 
 # Load the spaCy model
@@ -1021,3 +1023,47 @@ def filter_verifier_response(verifier_response):
                 missing.append(response)
 
     return correct, (good, bad, missing)
+
+
+####################
+# Compute Style Representation #
+####################
+def get_cluster_style_representations(styles_df, cluster_df):
+    
+    #create a dictionary mapping features to their idf
+    number_documents    = styles_df.documentID.nunique()
+    style_feats_agg_df  = styles_df.groupby('final_attribute_name').agg({'documentID': lambda x: len(x)}).reset_index()
+    style_feats_agg_df['document_freq'] = style_feats_agg_df.documentID
+    style_feats_list = style_feats_agg_df.final_attribute_name.tolist()
+    style_to_feats_dfreq = {x[0]: math.log(number_documents/x[1]) for x in zip(style_feats_agg_df.final_attribute_name.tolist(), style_feats_agg_df.document_freq.tolist())}
+
+    # Construct interpretable dimensions to style distribution mapping
+    cluster_to_styles = defaultdict(list)
+    for _, row in cluster_df.iterrows():
+        cluster_label = row["cluster_label"]
+        styles = row["final_attribute_name"]
+        cluster_to_styles[cluster_label].extend(styles)
+
+    tfidf_rep = []
+    for cluster_label, cluster_styles in cluster_to_styles.items():
+        style_counts = Counter(cluster_styles)
+        total_styles = sum(style_counts.values())
+        tfidf_rep.append([style_counts[style_feat] * style_to_feats_dfreq[style_feat] if style_feat in style_counts else 0 for style_feat in style_feats_list])
+        
+    return np.array(tfidf_rep)
+
+def get_document_style_representations(style_assignments, document_ids):
+    style_feats   = style_assignments.final_attribute_name.unique().tolist()
+    doc_styles_df = style_assignments.groupby('documentID').agg({'final_attribute_name': lambda x: list(x)}).reset_index()
+    doc_styles_dict = {row['documentID'] : row['final_attribute_name'] for idx, row in doc_styles_df.iterrows()}
+
+    #print(doc_styles_dict)
+    #print(document_ids)
+    output = []
+    for document_id in document_ids:
+        if document_id not in doc_styles_dict:
+            print("Document {} doesn't exist!".format(document_id))
+            output.append([0]* len(style_feats))
+        else:
+            output.append([1 if feat in doc_styles_dict[document_id] else 0 for feat in style_feats])
+    return np.array(output)

@@ -58,7 +58,7 @@ def main(args):
 
     print("Generating styles... ", end="")
     save_dir = (
-        replace_first_word(args["data_dir"], "describe_documents_writing_styles")
+        replace_first_word(args["data_dir"],  "filtered", "describe_documents_writing_styles")
         + ".csv"
     )
 
@@ -99,7 +99,7 @@ def main(args):
     print("Done.")
 
     print("Shortening styles... ", end="")
-    save_dir = os.path.join(os.path.dirname(args["data_dir"]), "style_corpus.csv")
+    save_dir = os.path.join(os.path.dirname(args["data_dir"]), "filtered", "style_corpus.csv")
 
     style_shortener = StyleGenerator(
         model_name=args["shortener_model"],

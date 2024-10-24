@@ -85,7 +85,24 @@ def main(args):
     documents_df['documetn_style_description'] = final_documents_reps
     documents_df.to_json(args['output_path'])
 
+def get_documents_rep_vectors(documents, model_path, interp_space_path):
+    model = get_model(model_path)
+    
+    interpretable_space = pkl.load(open(interp_space_path, 'rb'))
+    del interpretable_space[-1] #DBSCAN generate a cluster -1 of all outliers. We don't want this cluster
+    print("# clusters:", len(interpretable_space))
 
+    
+    dimension_to_latent = {key: interpretable_space[key][0] for key in interpretable_space}
+    proj_matrix = np.array(list(dimension_to_latent.values()))
+    proj_matrix = normalize(proj_matrix, axis=1, norm='l2')
+
+    # Compute latent and interpretable vectors for query and candidate documents
+    documents_latent = model.encode(documents)
+    documents_interp  = [proj_matrix.dot(e) for e in documents_latent]
+
+    return documents_latent, documents_interp
+    
 def explain_model_prediction(model_path, inter_space_path, query_document, candidate_documents, top_c=3, top_k=5):
 
     #load ta2 model

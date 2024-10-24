@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 
-def get_model(model, device=None):
+def get_model(model, device=None, model_path=None):
     current_dir = os.path.dirname(__file__)
 
     # Add the directory to sys.path
@@ -31,6 +31,15 @@ def get_model(model, device=None):
         from wegmann import WEGMANN
 
         return WEGMANN()
+
+    elif model == "styledistance":
+        from styledistance import StyleDistance
+
+        return StyleDistance()
+    else:
+        from semantic_model import SemanticModel
+
+        return SemanticModel(model_path)
 
 
 ##################

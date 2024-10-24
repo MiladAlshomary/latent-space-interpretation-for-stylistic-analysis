@@ -49,14 +49,14 @@ def main(args):
     python script.py --train-dir path/to/train --test-dir path/to/test --save-dir path/to/save --model aa_model-luar --eps
     """
     # Load model and data
-    model = get_model(args["model"])
-    train_df = get_aa_data(args["train_dir"], group_by_author=True)
+    model = get_model(args["model"], model_path=args["model_path"])
+    train_df_by_author = get_aa_data(args["train_dir"], group_by_author=True)
     test_df  = get_aa_data(args["test_dir"])
 
     # Get embeddings for documents
     author_to_embeddings = {
         row["authorID"]: np.mean(model.encode(row["fullText"]), axis=0)
-        for _, row in train_df.iterrows()
+        for _, row in train_df_by_author.iterrows()
     }
     author_mean_embeddings = np.vstack(list(author_to_embeddings.values()))
 
@@ -95,12 +95,12 @@ def main(args):
 
         #json.dump(eps_to_performance, open('./eps_performances.json', 'w'))
         best_eps = sorted(eps_to_performance.items(), key=lambda x: x[1][0])[0][0]#find_first_minimal_change(eps_to_performance, args["eps_threshold"])
-        train_df["cluster_label"] = eps_to_labels[best_eps]
+        train_df_by_author["cluster_label"] = eps_to_labels[best_eps]
 
-        return best_eps, train_df
+        return best_eps, train_df_by_author
 
     if args['eps'] == -1:
-        best_eps, train_df = find_best_eps()
+        best_eps, train_df_by_author = find_best_eps()
     else:
         best_eps = args['eps']
 
@@ -117,40 +117,49 @@ def main(args):
             [sum_vectors[label] / count for label, count in count_vectors.items()]
         )
 
-        train_df["cluster_label"] = cluster_labels
+        train_df_by_author["cluster_label"] = cluster_labels
         
-        
+
+    
     if not os.path.exists(args["save_dir"]):
         os.makedirs(args["save_dir"])
 
     styles_df = pd.read_csv(args["style_dir"])[["final_attribute_name", "documentID"]]
+    style_feats_agg_df = styles_df.groupby('final_attribute_name').agg({'documentID': lambda x : len(list(x))}).reset_index()
+    doc_style_agg_df   = styles_df.groupby('documentID').agg({'final_attribute_name': lambda x : list(x)}).reset_index()
+    
+    
+    train_df_by_author["documentID"] = train_df_by_author["documentID"].apply(safe_parse)
 
-    train_df["documentID"] = train_df["documentID"].apply(safe_parse)
-    train_df_exploded = train_df.explode("documentID")
-    train_df_exploded["fullText"] = train_df_exploded["fullText"].apply(
-        lambda x: " ".join(x) if isinstance(x, list) else x
-    )
-    merged_df = pd.merge(train_df_exploded, styles_df, on="documentID", how="left")
-    aggregated_df = (
-        merged_df.groupby(["authorID", "fullText", "documentID", "cluster_label"])
-        .agg({"final_attribute_name": lambda x: x.tolist()})
-        .reset_index()
-    )
-    final_agg = (
-        aggregated_df.groupby(["authorID", "fullText", "cluster_label"])
-        .agg({"final_attribute_name": lambda x: sum(x, [])})
-        .reset_index()
-    )
-    train_df["fullText"] = train_df["fullText"].apply(
-        lambda x: " ".join(x) if isinstance(x, list) else x
-    )
-    final_df = pd.merge(
-        train_df, final_agg, on=["authorID", "fullText", "cluster_label"], how="left"
+    author_to_cluster_label = {x[0]: x[1] for x in zip(train_df_by_author.authorID.tolist(), train_df_by_author.cluster_label.tolist())}
+    document_to_style_attributes = {x[0]: x[1] for x in zip(doc_style_agg_df.documentID.tolist(), doc_style_agg_df.final_attribute_name.tolist())}
+
+    train_df_by_document = get_aa_data(args["train_dir"], group_by_author=False)
+    train_df_by_document['final_attribute_name'] = train_df_by_document.documentID.apply(lambda x: document_to_style_attributes[x] if x in document_to_style_attributes else [])
+    train_df_by_document['cluster_label'] = train_df_by_document.authorID.apply(lambda x: author_to_cluster_label[x])
+
+    def get_doc_feats(doc_id):
+        return document_to_style_attributes[doc_id] if doc_id in document_to_style_attributes else []
+        
+    train_df_by_author["documentID"] = train_df_by_author["documentID"].apply(safe_parse)
+    train_df_by_author["final_attribute_name"] =train_df_by_author.documentID.apply(lambda docIds: [feat for doc in docIds for feat in get_doc_feats(doc)])
+    train_df_by_author["full_text"] = train_df_by_author.fullText.apply(lambda x: ' <new_documents> '.join(x))
+
+    # Save clustered and style-assigned document DataFrame
+    pd.to_pickle(
+        train_df_by_document,
+        open(
+            os.path.join(
+                args["save_dir"],
+                os.path.basename(os.path.splitext(args["train_dir"])[0] + "_documents.pkl"),
+            ),
+            "wb",
+        ),
     )
 
     # Save clustered and style-assigned author DataFrame
     pd.to_pickle(
-        final_df,
+        train_df_by_author,
         open(
             os.path.join(
                 args["save_dir"],
@@ -160,18 +169,18 @@ def main(args):
         ),
     )
 
+
     # Construct interpretable dimensions to style distribution mapping
     cluster_to_authors = defaultdict(list)
     cluster_to_styles = defaultdict(list)
 
     #create a dictionary mapping features to their idf
     number_documents    = styles_df.documentID.nunique()
-    style_feats_agg_df  = styles_df.groupby('final_attribute_name').agg({'documentID': lambda x: len(x)}).reset_index()
     style_feats_agg_df['document_freq'] = style_feats_agg_df.documentID
     style_feats_list = style_feats_agg_df.final_attribute_name.tolist()
     style_to_feats_dfreq = {x[0]: math.log(number_documents/x[1]) for x in zip(style_feats_agg_df.final_attribute_name.tolist(), style_feats_agg_df.document_freq.tolist())}
 
-    for _, row in final_df.iterrows():
+    for _, row in train_df_by_author.iterrows():
         cluster_label = row["cluster_label"]
         author_id = row["authorID"]
         styles = row["final_attribute_name"]
@@ -222,6 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("--save-dir", type=str, required=True)
     parser.add_argument("--style-dir", type=str, required=True)
     parser.add_argument("--model", type=str, default="aa_model-luar")
+    parser.add_argument("--model_path", type=str, default=None)
     
     parser.add_argument("--eps", type=float, default=-1)
     parser.add_argument("--summarize_cluster_reps", action='store_true', default=False)
