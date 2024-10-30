@@ -78,13 +78,45 @@ def main(args):
             #print(cluster_id)
             #print(cluster_feats)
             rep_feats+= [x[0] for x in cluster_feats[:args['top_k']]]
-            #break
         final_documents_reps.append(rep_feats)
-        #break
 
     documents_df['documetn_style_description'] = final_documents_reps
     documents_df.to_json(args['output_path'])
 
+def get_documents_style_descriptions(documents, model_path, interp_space_path, top_c=3, top_k=10):
+    
+    model = get_model(model_path)
+    
+    #'../data/explainability/clusterd_authors_with_style_description.pkl'
+    interpretable_space = pkl.load(open(interp_space_path, 'rb'))
+    
+    del interpretable_space[-1] #DBSCAN generate a cluster -1 of all outliers. We don't want this cluster
+    print("# clusters:", len(interpretable_space))
+    dimension_to_latent = {key: interpretable_space[key][0] for key in interpretable_space}
+    dimension_to_style  = {key: interpretable_space[key][1] for key in interpretable_space}
+    
+    proj_matrix = np.array(list(dimension_to_latent.values()))
+    #print(proj_matrix)
+    #normalize projection matrix
+    proj_matrix = normalize(proj_matrix, axis=1, norm='l2')
+    
+    documents_assigned_clusters, documents_ranked_clusters = document_to_cluster_assignment(model, proj_matrix, documents)
+
+    # Aggregate the top-k fetures of the top-n clusters to be the final list
+    final_documents_reps = []
+    final_documents_clusters = []
+    for i, ranked_clusters in enumerate(documents_ranked_clusters):
+        rep_feats = []
+        for cluster_id in ranked_clusters[:top_c]:
+            cluster_feats = sorted(dimension_to_style[cluster_id].items(), key=lambda x: -x[1])
+            #print(cluster_id)
+            #print(cluster_feats)
+            rep_feats+= [(cluster_id, x) for x in cluster_feats[:top_k]]
+        final_documents_reps.append(rep_feats)
+        final_documents_clusters.append([(c, documents_assigned_clusters[i][c]) for c in ranked_clusters[:top_c]])
+
+    return final_documents_reps, final_documents_clusters
+    
 def get_documents_rep_vectors(documents, model_path, interp_space_path):
     model = get_model(model_path)
     
@@ -173,7 +205,7 @@ def explain_model_prediction_over_author(model_path, inter_space_path, query_aut
     print("# clusters:", len(interpretable_space))
     dimension_to_latent = {key: interpretable_space[key][0] for key in interpretable_space}
     dimension_to_style  = {key: [f[0] for f in sorted(interpretable_space[key][1].items(), key=lambda x: -x[1])] for key in interpretable_space}
-    dimension_to_style_summary  = {key: interpretable_space[key][2] for key in interpretable_space}
+    dimension_to_style_summary  = {key: interpretable_space[key][2] if len(interpretable_space[key]) > 2 else ' - '.join(dimension_to_style[key][:top_k]) for key in interpretable_space}
     proj_matrix = np.array(list(dimension_to_latent.values()))
     proj_matrix = normalize(proj_matrix, axis=1, norm='l2')
 
