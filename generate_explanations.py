@@ -83,17 +83,20 @@ def main(args):
     documents_df['documetn_style_description'] = final_documents_reps
     documents_df.to_json(args['output_path'])
 
-def get_documents_style_descriptions(documents, model_path, interp_space_path, top_c=3, top_k=10):
+def get_documents_style_descriptions(documents, model_path, interp_space_path, interp_space_rep_path, style_feat_clm, top_c=3, top_k=10, flip_cluster_order=False):
     
     model = get_model(model_path)
     
     #'../data/explainability/clusterd_authors_with_style_description.pkl'
     interpretable_space = pkl.load(open(interp_space_path, 'rb'))
-    
     del interpretable_space[-1] #DBSCAN generate a cluster -1 of all outliers. We don't want this cluster
     print("# clusters:", len(interpretable_space))
     dimension_to_latent = {key: interpretable_space[key][0] for key in interpretable_space}
-    dimension_to_style  = {key: interpretable_space[key][1] for key in interpretable_space}
+    
+    #Load interp space representations
+    interpretable_space_rep_df = pd.read_json(interp_space_rep_path)
+    dimension_to_style  = {x[0]: x[1] for x in zip(interpretable_space_rep_df.cluster_label.tolist(), interpretable_space_rep_df[style_feat_clm].tolist())}
+
     
     proj_matrix = np.array(list(dimension_to_latent.values()))
     #print(proj_matrix)
@@ -102,21 +105,26 @@ def get_documents_style_descriptions(documents, model_path, interp_space_path, t
     
     documents_assigned_clusters, documents_ranked_clusters = document_to_cluster_assignment(model, proj_matrix, documents)
 
+    #print([r[0] for r in documents_ranked_clusters])
+    
     # Aggregate the top-k fetures of the top-n clusters to be the final list
     final_documents_reps = []
     final_documents_clusters = []
+    final_documents_dist_rep = []
     for i, ranked_clusters in enumerate(documents_ranked_clusters):
         rep_feats = []
+        if flip_cluster_order:
+            ranked_clusters = list(reversed(ranked_clusters))
+
         for cluster_id in ranked_clusters[:top_c]:
-            cluster_feats = sorted(dimension_to_style[cluster_id].items(), key=lambda x: -x[1])
-            #print(cluster_id)
-            #print(cluster_feats)
+            cluster_feats = dimension_to_style[cluster_id]
             rep_feats+= [(cluster_id, x) for x in cluster_feats[:top_k]]
         final_documents_reps.append(rep_feats)
         final_documents_clusters.append([(c, documents_assigned_clusters[i][c]) for c in ranked_clusters[:top_c]])
-
-    return final_documents_reps, final_documents_clusters
     
+    return final_documents_reps, final_documents_clusters
+
+
 def get_documents_rep_vectors(documents, model_path, interp_space_path):
     model = get_model(model_path)
     
@@ -194,18 +202,27 @@ def explain_model_prediction(model_path, inter_space_path, query_document, candi
     
     return model_latent_rank, model_interp_rank, query_style_reps, query_style_reps_summ, candidates_distance_to_query_rep
 
-def explain_model_prediction_over_author(model_path, inter_space_path, query_author, candidate_authors, top_c=3, top_k=5):
+def explain_model_prediction_over_author(model_path, inter_space_path, inter_space_rep_path, query_author, candidate_authors, top_c=3, top_k=5, style_feat_clm='tfidf_rep_5', style_feat_summary_clm=None):
 
     #load ta2 model
     model = get_model(model_path)
     
     #load interpretable_space and compute projection matrix
     interpretable_space = pkl.load(open(inter_space_path, 'rb'))
+
+    #Load interp space representations
+    interpretable_space_rep_df = pd.read_json(inter_space_rep_path)
+    dimension_to_style  = {x[0]: x[1] for x in zip(interpretable_space_rep_df.cluster_label.tolist(), interpretable_space_rep_df[style_feat_clm].tolist())}
+
+    if style_feat_summary_clm == None:
+        dimension_to_style_summary  = {x[0]: ' - '.join(x[1]) for x in zip(interpretable_space_rep_df.cluster_label.tolist(), interpretable_space_rep_df[style_feat_clm].tolist())}
+    else:
+        dimension_to_style_summary  = {x[0]: x[1] for x in zip(interpretable_space_rep_df.cluster_label.tolist(), interpretable_space_rep_df[style_feat_summary_clm].tolist())}
+    
     del interpretable_space[-1] #DBSCAN generate a cluster -1 of all outliers. We don't want this cluster
     print("# clusters:", len(interpretable_space))
     dimension_to_latent = {key: interpretable_space[key][0] for key in interpretable_space}
-    dimension_to_style  = {key: [f[0] for f in sorted(interpretable_space[key][1].items(), key=lambda x: -x[1])] for key in interpretable_space}
-    dimension_to_style_summary  = {key: interpretable_space[key][2] if len(interpretable_space[key]) > 2 else ' - '.join(dimension_to_style[key][:top_k]) for key in interpretable_space}
+    
     proj_matrix = np.array(list(dimension_to_latent.values()))
     proj_matrix = normalize(proj_matrix, axis=1, norm='l2')
 

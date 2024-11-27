@@ -1,6 +1,7 @@
 import os
 import argparse
 import spacy
+import json
 
 import pandas as pd
 from mutual_implication_score import MIS
@@ -56,9 +57,10 @@ def main(args):
         datadreamer_path=args['datadreamer_path']
     )
 
+    ### FIRST: WE GENERATE THE STYLES USING LLAMA3 ###############################
     print("Generating styles... ", end="")
     save_dir = (
-        replace_first_word(args["data_dir"],  "filtered", "describe_documents_writing_styles")
+        replace_first_word(args["data_dir"], "describe_documents_writing_styles")
         + ".csv"
     )
 
@@ -67,37 +69,21 @@ def main(args):
             training_df.documentID.tolist(), training_df.fullText.tolist()
         )
 
+        output_df.to_pickle(save_dir.replace('.csv', '') + '_raw_generations.pkl')
+
         # Extract styles and map with documentIDs
-        styles_df = pd.DataFrame(columns=["attribute_name", "documentID"])
+        styles_df = pd.DataFrame([(feat, row['documentID']) for idx, row in output_df.iterrows() for feat in row['attribute_name']], columns=["attribute_name", "documentID"])
 
-        for _, row in output_df.iterrows():
-            descriptions = [
-                i.replace("* ", "")
-                for i in row["generations"].split("\n\n")
-                if "**" not in i and "*" in i
-            ]
-            
-            if len(descriptions) > 0:
-                descriptions = descriptions[0].split("\n")
-            else:
-                print(descriptions)
-                continue;
-
-            for description in descriptions:
-                styles_df = pd.concat(
-                    [
-                        styles_df,
-                        pd.DataFrame(
-                            [[description, row["documentID"]]],
-                            columns=["attribute_name", "documentID"],
-                        ),
-                    ]
-                )
-        styles_df.to_csv(save_dir, index=False)
+        # Feature to lingustic-level
+        feat_to_linguistic_lvl = {
+            feat: lvl for item in output_df.style_description.tolist() for lvl, feats in item.items() for feat in feats
+        }
+        json.dump(feat_to_linguistic_lvl, open(os.path.dirname(args["data_dir"]) + '/feats_to_ling_lvl.json', 'w'))         
     else:
         styles_df = pd.read_csv(save_dir)
     print("Done.")
 
+    ### SECOND: WE SHORTEN THE STYLE FEATURES USING GPT3.5 ###############################
     print("Shortening styles... ", end="")
     save_dir = os.path.join(os.path.dirname(args["data_dir"]), "filtered", "style_corpus.csv")
 
@@ -112,7 +98,7 @@ def main(args):
         style_corpus = process_style_features(
             style_shortener,
             styles_df,
-            datadreamer_path="processing_llama3_style_features",
+            datadreamer_path=args['datadreamer_path'] + "/processing_llama3_style_features",
             column_name="attribute_name",
             output_clm="shortend_attribute_name.v1",
             output_path=save_dir,
@@ -122,7 +108,7 @@ def main(args):
         style_corpus = process_style_features(
             style_shortener,
             style_corpus,
-            datadreamer_path="processing_llama3_style_features.v2",
+            datadreamer_path=args['datadreamer_path'] + "/processing_llama3_style_features.v2",
             column_name="shortend_attribute_name.v1",
             output_clm="shortend_attribute_name.v2",
             output_path=save_dir,
@@ -131,9 +117,10 @@ def main(args):
         style_corpus = pd.read_csv(save_dir)
     print("Done.")
 
+    ### THIRD: WE FILTER OUT FEATURES THAT APPEAR LESS THAN 3 TIMES IN THE CORPUS ###############################
     print("Filtering shortened styles... ", end="")
     save_dir = os.path.join(
-        os.path.dirname(args["data_dir"]), "filtered", "style_corpus.csv"
+        os.path.dirname(args["data_dir"]), "filtered", "style_corpus_filtered.csv"
     )
 
     if not os.path.exists(save_dir):
@@ -158,12 +145,14 @@ def main(args):
         filtered_df = pd.read_csv(save_dir)
     print("Done.")
 
+    filtered_df.dropna(inplace=True)
+
+    ### FOURTH: WE AGGREGATE SIMILAR FEATURES USING MIS MEASURE ###############################
     save_dir = os.path.join(
         os.path.dirname(args["data_dir"]),
         "filtered",
         "refined_and_aggregated_features.csv",
     )
-
     if not os.path.exists(save_dir):
         mis = MIS(device=f'cuda:{args["device"][0]}')
 
@@ -189,12 +178,13 @@ def main(args):
     else:
         filtered_df = pd.read_csv(save_dir)
 
+    ### FIFTH: WE EXTRACT PHRASES FROM THE STYLE FEATURES ###############################
     save_dir = os.path.join(
         os.path.dirname(args["data_dir"]),
         "filtered",
         "refined_and_aggregated_features_final.csv",
     )
-
+    
     if not os.path.exists(save_dir):
         unique_attributes = filtered_df.aggregated_name.unique()
         attribute_to_patterns = {x: get_np(x) for x in unique_attributes}
@@ -225,7 +215,8 @@ def main(args):
         )
 
         expanded_df.to_csv(save_dir, index=False)
-
+    else:
+        expanded_df = pd.read_csv(save_dir)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

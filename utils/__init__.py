@@ -144,7 +144,7 @@ def extract_feats(desc):
 
     paras = desc.split("\n\n")
 
-    if paras and "Here are the writing style attributes of the given text" in paras[0]:
+    if paras and paras[0].startswith('Here'):
         paras = paras[1:]
 
     if not paras:
@@ -152,6 +152,8 @@ def extract_feats(desc):
 
     for i in range(0, len(paras), 2):
         if i + 1 >= len(paras):
+            print('Skipping paragraph')
+            print(paras[i])
             continue
 
         category = re.sub(r"\*\*", "", paras[i]).strip().replace(":", "")

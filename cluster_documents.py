@@ -15,7 +15,7 @@ from scipy.spatial.distance import pdist, squareform
 
 from data import get_aa_data
 from utils import find_first_minimal_change, safe_parse
-from metrics import compute_model_performance
+from metrics import compute_model_performance, compute_intrinsic_clusters_score
 from aa_models import get_model
 from styles import StyleGenerator
 
@@ -50,7 +50,9 @@ def main(args):
     """
     # Load model and data
     model = get_model(args["model"], model_path=args["model_path"])
-    train_df_by_author = get_aa_data(args["train_dir"], group_by_author=True)
+    
+    train_df_by_author   = get_aa_data(args["train_dir"], group_by_author=True)
+    train_df_by_document = get_aa_data(args["train_dir"], group_by_author=False)
     test_df  = get_aa_data(args["test_dir"])
 
     # Get embeddings for documents
@@ -77,7 +79,9 @@ def main(args):
             cluster_labels = DBSCAN(
                 eps=eps, metric="precomputed", min_samples=2, n_jobs=-1
             ).fit_predict(distance_matrix)
-    
+
+            sil_score, dbcv_score = compute_intrinsic_clusters_score(author_mean_embeddings, cluster_labels, filter_outliers=True)
+            
             sum_vectors = defaultdict(lambda: np.zeros(len(author_mean_embeddings[0])))
             count_vectors = Counter(cluster_labels)
             for label, vector in zip(cluster_labels, author_mean_embeddings):
@@ -91,7 +95,7 @@ def main(args):
             eps_to_performance[eps] = [eps_to_performance[eps], len(new_bases)]
             eps_to_labels[eps] = cluster_labels
     
-            print(eps_to_performance[eps], eps)
+            print(eps_to_performance[eps] + [sil_score, dbcv_score], round(eps, 3))
 
         #json.dump(eps_to_performance, open('./eps_performances.json', 'w'))
         best_eps = sorted(eps_to_performance.items(), key=lambda x: x[1][0])[0][0]#find_first_minimal_change(eps_to_performance, args["eps_threshold"])
@@ -124,7 +128,10 @@ def main(args):
     if not os.path.exists(args["save_dir"]):
         os.makedirs(args["save_dir"])
 
-    styles_df = pd.read_csv(args["style_dir"])[["final_attribute_name", "documentID"]]
+
+    styles_df = pd.read_csv(args["style_dir"])[[args['style_feat_column'], "documentID"]]
+    styles_df['final_attribute_name'] = styles_df[args['style_feat_column']]
+    
     style_feats_agg_df = styles_df.groupby('final_attribute_name').agg({'documentID': lambda x : len(list(x))}).reset_index()
     doc_style_agg_df   = styles_df.groupby('documentID').agg({'final_attribute_name': lambda x : list(x)}).reset_index()
     
@@ -134,7 +141,6 @@ def main(args):
     author_to_cluster_label = {x[0]: x[1] for x in zip(train_df_by_author.authorID.tolist(), train_df_by_author.cluster_label.tolist())}
     document_to_style_attributes = {x[0]: x[1] for x in zip(doc_style_agg_df.documentID.tolist(), doc_style_agg_df.final_attribute_name.tolist())}
 
-    train_df_by_document = get_aa_data(args["train_dir"], group_by_author=False)
     train_df_by_document['final_attribute_name'] = train_df_by_document.documentID.apply(lambda x: document_to_style_attributes[x] if x in document_to_style_attributes else [])
     train_df_by_document['cluster_label'] = train_df_by_document.authorID.apply(lambda x: author_to_cluster_label[x])
 
@@ -235,6 +241,7 @@ if __name__ == "__main__":
     
     parser.add_argument("--eps", type=float, default=-1)
     parser.add_argument("--summarize_cluster_reps", action='store_true', default=False)
+    parser.add_argument("--style_feat_column", type=str, default='final_attribute_name')
     parser.add_argument("--top_k_feats", type=int, default=-1)
     args = vars(parser.parse_args())
 

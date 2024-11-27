@@ -451,6 +451,11 @@ class StyleGenerator:
             ds_desc = ds_desc.map(
                 lambda row: {"style_description": extract_feats(row["generations"])}
             )
+            
+            ds_desc = ds_desc.map(
+                lambda row: {"attribute_name": [feat for item in row['style_description'].items() for feat in item[1]]}
+            )
+            
             zipped_step = zipped(ds, ds_desc)
             datasets_list.append(zipped_step)
 
@@ -562,6 +567,56 @@ class StyleGenerator:
                 features=results_ds.features,
             ).to_pandas()
 
+            return pandas_df
+
+    def evaluate_style_features_in_text(self, items, datadreamer_name=''):
+        with DataDreamer(
+            os.path.join(
+                self.datadreamer_path,
+                "evaluate_style_features_in_text",
+                self.model_name,
+                datadreamer_name
+            )
+        ):
+            ds = Dataset.from_list(items)
+            ds = DataSource('experiment-1.2-dataset', ds)
+    
+            ds = ds.map(lambda row: {
+                "inputs": "Text: {}\n\n Style Features:\n{}".format(row['fullText'].replace('\n\n', '\n'), '\n'.join(['feature-{}: {}'.format(i+1, row['feature_{}'.format(i)]) for i in range(10)]))})
+            ds_desc = ProcessWithPrompt(
+              "rate applicability of features in texts",
+              inputs={"inputs": ds.output["inputs"]},
+              args={
+                 "llm": self.model,
+                 "n": 1,
+                 "instruction": "You are a linguist expert. Your task is to read the text, and for each of the writing style features, give a score from 1 to 3. \n Score 1: The feature doesn't apply anywhere in the text \n Score 2: The feature appears somewhere in the text but not frequent \n Score 3: The feature often appears in the text"
+              },
+              outputs={"generations": "generations", "prompts": "prompts"},
+            ).select_columns(["generations", "prompts"])
+
+            def parse_output(gen):
+                feats_scores = gen.split('\n')
+                scores = []
+                for fs in feats_scores:
+                    pattern  = re.search(r"feature-[\d]+: ([^\d]*)(\d)", fs)
+                    if pattern is not None:
+                        pattern = pattern.groups()
+                        if len(pattern) > 1:
+                            #print(pattern)
+                            pattern_0 = re.sub(r'[-]? Score[:]?', '', pattern[0])
+                            #output.append([pattern_0.replace('-', '').replace(':', '').strip(), pattern[1]])
+                            scores.append(pattern[1])
+                return scores
+    
+            ds_desc = ds_desc.map(lambda row: {"chatgpt-scorings": parse_output(row['generations'])})
+            zipped_step = zipped(ds, ds_desc)
+    
+            results_ds = zipped_step.output.dataset
+            pandas_df   = Dataset.from_generator(partial(gen_from_iterable_dataset, results_ds), features=results_ds.features).to_pandas()
+
+            pandas_df['chatgpt-scorings'] = pandas_df.apply(lambda row: list(zip(row['all_features'],row['chatgpt-scorings'])), axis=1)
+            
+            
             return pandas_df
 
 
