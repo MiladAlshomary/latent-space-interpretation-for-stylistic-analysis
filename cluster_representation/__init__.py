@@ -115,8 +115,9 @@ def generate_interpretable_space_representation(interp_space_path, styles_df_pat
     def compute_tfidf(row):
         style_counts = Counter(row[feat_clm])
         total_num_styles = sum(style_counts.values())
+        #print(style_counts, total_num_styles)
         style_distribution = {
-            style: count * style_to_feats_dfreq[style] if style in style_to_feats_dfreq else 0 for style, count in style_counts.items()
+            style: math.log(1+count) * style_to_feats_dfreq[style] if style in style_to_feats_dfreq else 0 for style, count in style_counts.items()
         } #TF-IDF
         
         return style_distribution
@@ -131,8 +132,8 @@ def generate_interpretable_space_representation(interp_space_path, styles_df_pat
         else:
             return top_k_feats
 
-    clusterd_df['style_tfidf_dist'] = clusterd_df.apply(lambda row: compute_tfidf(row), axis=1)
-    clusterd_df[output_clm]         = clusterd_df.style_tfidf_dist.apply(lambda dist: create_tfidf_rep(dist, num_feats, summarize_with_gpt))
+    clusterd_df[output_clm +'_dist'] = clusterd_df.apply(lambda row: compute_tfidf(row), axis=1)
+    clusterd_df[output_clm]         = clusterd_df[output_clm +'_dist'].apply(lambda dist: create_tfidf_rep(dist, num_feats, summarize_with_gpt))
 
     return clusterd_df
     
