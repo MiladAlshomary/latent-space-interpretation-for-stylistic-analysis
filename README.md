@@ -1,3 +1,7 @@
+# Introduction
+
+This repository contain the code for our paper Latent Space Interpretation for Stylistic Analysis and Explainable Authorship Attribution (https://arxiv.org/abs/2409.07072), accepted at COLIING-25.
+
 # Style Generation Pipeline
 
 Example usage for generating styles:
